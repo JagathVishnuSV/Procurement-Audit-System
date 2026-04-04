@@ -1,0 +1,4 @@
+# Trained ML model artifacts are stored here.
+# Files:
+#   isolation_forest.joblib  – Trained IsolationForest model (Sprint 2)
+#   scaler.joblib            – StandardScaler for feature normalisation (Sprint 2)

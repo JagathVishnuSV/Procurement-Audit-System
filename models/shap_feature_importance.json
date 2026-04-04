@@ -1,0 +1,90 @@
+[
+  {
+    "feature": "days_since_last_invoice",
+    "mean_abs_shap": 1.20121
+  },
+  {
+    "feature": "is_weekend_payment",
+    "mean_abs_shap": 0.50032
+  },
+  {
+    "feature": "approval_limit_proximity",
+    "mean_abs_shap": 0.49902
+  },
+  {
+    "feature": "is_round_amount",
+    "mean_abs_shap": 0.34843
+  },
+  {
+    "feature": "amount_vs_vendor_avg",
+    "mean_abs_shap": 0.29339
+  },
+  {
+    "feature": "freq_change_rate",
+    "mean_abs_shap": 0.27232
+  },
+  {
+    "feature": "consecutive_small_invoices",
+    "mean_abs_shap": 0.27207
+  },
+  {
+    "feature": "invoice_spacing_cv",
+    "mean_abs_shap": 0.21804
+  },
+  {
+    "feature": "amount_log",
+    "mean_abs_shap": 0.13665
+  },
+  {
+    "feature": "small_invoice_cluster_14d",
+    "mean_abs_shap": 0.1025
+  },
+  {
+    "feature": "max_invoices_7d_window",
+    "mean_abs_shap": 0.09188
+  },
+  {
+    "feature": "vendor_30d_velocity",
+    "mean_abs_shap": 0.09048
+  },
+  {
+    "feature": "invoice_count_24h",
+    "mean_abs_shap": 0.09006
+  },
+  {
+    "feature": "invoice_count_30d",
+    "mean_abs_shap": 0.08884
+  },
+  {
+    "feature": "invoice_sum_48h",
+    "mean_abs_shap": 0.0866
+  },
+  {
+    "feature": "invoice_count_7d",
+    "mean_abs_shap": 0.08582
+  },
+  {
+    "feature": "rolling_7d_sum",
+    "mean_abs_shap": 0.08119
+  },
+  {
+    "feature": "invoice_count_48h",
+    "mean_abs_shap": 0.07749
+  },
+  {
+    "feature": "amount_zscore_30d",
+    "mean_abs_shap": 0.05613
+  },
+  {
+    "feature": "amount_std_30d",
+    "mean_abs_shap": 0.05437
+  },
+  {
+    "feature": "amount_vs_category_avg",
+    "mean_abs_shap": 0.0
+  },
+  {
+    "feature": "invoice_freq_vs_category",
+    "mean_abs_shap": 0.0
+  }
+]

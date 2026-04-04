@@ -1,0 +1,125 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Procurement Audit System – Infrastructure Stack
+# Services: PostgreSQL 16, Redis 7, Redpanda (Kafka-compat.), Redpanda Console
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL 16 ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: procurement_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-procurement_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-procurement_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-procurement_audit}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-procurement_user} -d ${POSTGRES_DB:-procurement_audit}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - procurement_net
+
+  # ── Redis 7 (Feature Store / Cache) ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: procurement_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - procurement_net
+
+  # ── Redpanda (Kafka-compatible Event Broker) ─────────────────────────────────
+  redpanda:
+    image: redpandadata/redpanda:v23.3.11
+    container_name: procurement_redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --mode dev-container
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
+      - --default-log-level=warn
+    ports:
+      - "18081:18081"   # Schema Registry
+      - "18082:18082"   # HTTP Proxy
+      - "19092:19092"   # Kafka external listener
+      - "9644:9644"     # Admin API
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - procurement_net
+
+  # ── Redpanda Console (Web UI for topic inspection) ────────────────────────────
+  redpanda-console:
+    image: redpandadata/console:v2.4.3
+    container_name: procurement_redpanda_console
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command: |-
+      -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+          schemaRegistry:
+            enabled: true
+            urls: ["http://redpanda:8081"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda:9644"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - procurement_net
+
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  procurement_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  redpanda_data:

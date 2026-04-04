@@ -1,0 +1,306 @@
+PROJECT - INTELLIGENT PROCUREMENT AUDIT AND ANAMOLY DETECTION SYSTEM
+
+
+Here is the comprehensive System Design and Architecture Document for the Strategic Procurement Excellence Platform.
+
+This document serves as your engineering blueprint. It maps out exactly how the Frontend, Backend, AI/ML, and RAG components interact, followed by a structured, iterative implementation roadmap.
+
+1. High-Level System Architecture
+
+The system is built on an Event-Driven Microservices Architecture. This ensures the system can handle real-time data streams without bottlenecks, isolating the fast ML components from the slower LLM components.
+
+The Data Flow (End-to-End)
+
+Ingestion: Live transactions (Invoices/POs) enter via API and are pushed to a Redpanda (Kafka) topic: raw_transactions.
+
+Stream Processing: A Flink/Python worker calculates historical metrics (e.g., vendor's 30-day spend) using Redis (Feature Store) and pushes to enriched_transactions.
+
+ML Scoring: The ML Microservice applies the Isolation Forest model and SHAP explainer. If Score > Threshold, it pushes to anomalies_topic.
+
+LLM Triage: The Triage Microservice sends the anomaly to Groq. If Groq identifies a high risk, it pushes to deep_audit_topic.
+
+RAG & Deep Audit: The Audit Microservice pulls the exact contract clauses from FAISS, sends everything to Gemini, and saves the final JSON forensic report to PostgreSQL.
+
+User Action: The Frontend UI fetches the report via REST API. The human auditor reviews the evidence, assigns an Action Plan, and the system logs the ROI/Cost Savings.
+
+2. Database Design (PostgreSQL Schema)
+
+To support Contract Lifecycle Management (CLM) and actionable auditing, you need a relational database.
+
+Vendors Table: id, name, risk_tier, total_spend_ytd.
+
+Contracts (CLM) Table: id, vendor_id, upload_date, status (Active/Expired).
+
+Transactions Table: id, vendor_id, amount, date, category, description.
+
+Audit_Cases Table: id, transaction_id, ml_score, shap_reason, llm_verdict, contract_clause_cited, status (Open/In Review/Closed).
+
+Action_Plans Table: id, case_id, owner_email, deadline, action_type (Clawback/Template Update), dollars_saved, status.
+
+3. AI, ML, and RAG Design (The "Brain")
+A. The Machine Learning Layer (Fast & Explainable)
+
+Algorithm: IsolationForest (Scikit-Learn).
+
+Features: amount, vendor_30d_velocity, time_since_last_invoice, is_weekend_payment.
+
+Explainability: shap.TreeExplainer. Outputs human-readable drivers (e.g., "Amount is 4.2x standard deviation for Vendor X").
+
+B. The Contract Lifecycle Management (RAG) Layer
+
+Embedding Model: Google text-embedding-004 or HuggingFace all-MiniLM-L6-v2.
+
+Chunking Strategy: Semantic Clause Chunking. Break PDFs down by headers (e.g., "Pricing Terms", "Termination").
+
+Vector DB: FAISS. Stores the vector arrays mapped to the Contracts.id in PostgreSQL.
+
+C. The Dual-LLM Routing Engine
+
+Tier 1: Triage (Groq API - Llama 3 70B)
+
+Prompt Context: Transaction details + SHAP Reason.
+
+Task: Binary classification (Is this a standard business variance or potential fraud?).
+
+Output constraints: JSON {"escalate": true, "reason": "..."}.
+
+Tier 2: Deep Forensic Audit (Gemini 1.5 Flash)
+
+Prompt Context: Transaction details + Top 3 retrieved clauses from FAISS.
+
+Task: Cross-reference data against legal text.
+
+Output constraints: JSON {"verdict": "FRAUD", "violated_clause": "Section 4a", "confidence": 0.95}.
+
+4. Backend APIs & Microservices (FastAPI)
+
+The backend exposes REST APIs for the Frontend to interact with the database and AI outputs.
+
+Service 1: CLM & Knowledge API
+
+POST /api/contracts/upload: Accepts PDF, chunks it, embeds it, stores in FAISS & Postgres.
+
+GET /api/contracts/search: Semantic search for contract terms (for the Smart CLM UI).
+
+Service 2: Case Management API
+
+GET /api/cases: Returns a list of all open Audit_Cases sorted by Risk Score.
+
+GET /api/cases/{id}: Returns the full Evidence Card (SHAP + LLM Verdict + Clauses).
+
+POST /api/cases/{id}/action-plan: Creates a new record in the Action_Plans table.
+
+Service 3: Executive ROI API
+
+GET /api/metrics/roi: Aggregates the dollars_saved from closed Action Plans to display on the dashboard.
+
+GET /api/metrics/coverage: Shows Total Transactions vs. Audited Transactions.
+
+5. Frontend UI/UX Design (Streamlit or React)
+
+The UI acts as the Audit Command Center.
+
+View 1: Executive Dashboard
+
+Top KPI Cards: Total Spend Audited, Active Risks, Cost Savings (ROI) YTD.
+
+Charts: A bar chart showing "Anomalies by Department" and a line graph showing "Processing Time Reduced."
+
+View 2: Smart CLM (Contract Repository)
+
+A search bar acting like Google for contracts: "Show me all IT vendors with automatic renewal clauses."
+
+A table listing all active contracts with their expiration dates and linked vendor metrics.
+
+View 3: The Audit Inbox (Kanban Board)
+
+Three columns: New Flags, Under Investigation, Remediated.
+
+Cards display: Vendor Name, Risk Level (High/Med/Low), and Dollar Value Impact.
+
+View 4: The Forensic Case Workspace (The Core Feature)
+
+When an auditor clicks a card from the Inbox, this split-screen opens:
+
+Left Column (AI Evidence):
+
+Transaction Details Table.
+
+SHAP Waterfall Chart (Visualizing the ML anomaly).
+
+Gemini's Audit Report highlighting the exact PDF clause text (bolded).
+
+Right Column (Human Action):
+
+Action Plan Form: Select "Assignee" (e.g., Legal Dept), "Action Required" (e.g., Halt Payment), "Target Date", and "Estimated Savings ($)".
+
+A "Resolve Case" button that updates the database and feeds data back to the Executive ROI dashboard.
+
+6. Iterative Implementation Plan (5-Step Sprint)
+
+Do not try to build this all at once. Follow this Agile approach.
+
+Sprint 1: Data Foundation & Infra (Week 1)
+
+Goal: Setup databases and basic data flow.
+
+Tasks:
+
+Set up PostgreSQL, Redis, and Redpanda via docker-compose.
+
+Define SQLAlchemy models for the Postgres Schema.
+
+Write a Python script to pull mock data (or USAspending API data) and insert it into Postgres.
+
+Milestone: You can query dummy vendors and transactions from a SQL client.
+
+Sprint 2: The Fast ML Layer (Week 2)
+
+Goal: Mathematically score transactions.
+
+Tasks:
+
+Train the Scikit-Learn IsolationForest on historical data.
+
+Implement shap to extract the top feature reason.
+
+Wrap this in a FastAPI endpoint (/score) and test it with Postman.
+
+Milestone: Sending a JSON transaction returns an anomaly score and a SHAP explanation.
+
+Sprint 3: Smart CLM & RAG Pipeline (Week 3)
+
+Goal: Make contracts searchable by the AI.
+
+Tasks:
+
+Create 3-5 dummy vendor contracts (PDFs) with specific tricky clauses.
+
+Use LangChain PyPDFLoader to chunk the text.
+
+Generate embeddings and store them in local FAISS.
+
+Milestone: You can pass a string like "What is the shipping fee for Vendor A?" and FAISS returns the exact paragraph.
+
+Sprint 4: LLM Orchestration & Webhooks (Week 4)
+
+Goal: Connect Groq and Gemini to automate the audit.
+
+Tasks:
+
+Implement the Groq Triage Python function.
+
+Implement the Gemini Deep Audit function (combining transaction + FAISS retrieval).
+
+Use instructor or Pydantic to force Gemini to output strict JSON.
+
+Save the final LLM output to the Audit_Cases Postgres table.
+
+Milestone: The system automatically populates the database with fully investigated forensic reports.
+
+Sprint 5: Frontend UI & Action Loops (Week 5)
+
+Goal: Make it interactive and prove business value.
+
+Tasks:
+
+Build the react vite application (or React if you prefer).
+
+Connect the UI to the FastAPI endpoints.
+
+Build the Case Workspace view first (Evidence + Action Plan form).
+
+Build the Executive ROI Dashboard last, summing up the data from the Action Plans.
+
+Milestone: A fully clickable demo where you can review a flagged AI invoice, assign an action plan, and watch the ROI dashboard update in real-time.
+
+Solving the "Real-Time & Real Data" Constraint
+As a student, you cannot access a corporation's live SAP/ERP system. To make this 100% real-time and use real data without mockups:
+The Data Source: Use Live Government/Open APIs. Governments publish daily procurement data and vendor contracts.
+Tabular Data: USAspending.gov API or the World Bank Procurement API. These update constantly with real purchase orders, vendor names, and amounts.
+Real Contracts: Use the SEC EDGAR API (which contains real corporate vendor agreements) or public city vendor contracts (e.g., NYC Open Data).
+The Real-Time Engine: Instead of reading a static CSV, you will build a FastAPI Webhook or use Apache Kafka/RabbitMQ. Your system will pull data from the public API every 5 minutes (simulating a live corporate stream) and process transactions as they arrive.
+Event Streaming / CDC: Redpanda (A lightweight, 100% Kafka-compatible broker. Much easier to run locally via Docker than Zookeeper/Kafka).
+Stream Processing: PyFlink (Apache Flink for Python) to compute sliding windows (e.g., 7/30-day vendor spend) in real-time.
+Feature Store / Fast Cache: Redis. Stores precomputed vendor aggregates and caches Groq responses to save API calls.
+ML Serving: FastAPI + Scikit-Learn (Isolation Forest) + SHAP (for explainability).
+Vector Infrastructure: FAISS (for raw similarity search) + PostgreSQL (to store the FAISS index mapping, metadata, and the Case Management system).
+LLM Orchestration: LangChain + Tenacity (for retries/circuit breaking) + Instructor (for enforcing strict JSON outputs from Gemini/Groq).
+LLM Observability: Langfuse (Open-source, tracks LLM latency, token costs, and rate limits).
+Frontend UI: React or Streamlit (with WebSockets for live push) + Investigator Case Management views.
+
+
+2. System Architecture & SLAs (The "Latency Budget")
+Data flows through Kafka topics. If any service fails, the data waits safely in the queue.
+Ingestion & Canonicalization (SLA: N/A - Background)
+Pull from USAspending API -> Clean names (e.g., "IBM Corp" vs "I.B.M.") -> Push to Kafka raw_tx_topic.
+Stream Processor & Feature Store (SLA: < 50ms)
+Flink reads raw_tx_topic, updates the 30-day vendor spend in Redis, and pushes enriched data to Kafka enriched_tx_topic.
+ML Scoring & SHAP (SLA: < 200ms)
+Microservice reads enriched_tx_topic. Loads pre-trained Isolation Forest.
+Generates Anomaly Score + SHAP feature attributions. If Score > Threshold, push to triage_topic.
+Groq Triage (SLA: < 1s)
+Microservice checks Redis Cache. If unseen, calls Groq. If Groq says "Audit", push to deep_audit_topic.
+FAISS Vector Service & Gemini Deep Audit (SLA: 3–8s)
+Query FAISS API (Top-3 clauses). Send compact payload to Gemini. Gemini outputs JSON (Verdict, Clause ID, Confidence).
+Case Management & PostgreSQL
+Results saved to Postgres. UI updates via WebSocket. Human reviews and clicks "Valid" or "Fraud" (Feedback loop)
+
+
+
+To build a system that is real-time, highly accurate, lightning-fast, and relies on real data, we need to upgrade the architecture to an enterprise-grade streaming pipeline.
+Here is the exact blueprint to address your specific requirements, including how to handle the models, the data, and the optimal use of Groq, Gemini, and Vector Databases.
+1. Are We Training Our Own Models?
+Yes and No.
+LLMs (Groq/Gemini): No. You will not train or fine-tune LLMs. Fine-tuning is expensive, slow, and hard to update. We will use RAG (Retrieval-Augmented Generation) to give these models real-time knowledge.
+Machine Learning (Tabular Data): Yes. You will "fit" (train) Unsupervised Machine Learning models (like Isolation Forest) on your historical tabular data. Because it is unsupervised, it doesn't need labeled "fraud" vs. "not fraud" data; it learns what "normal" looks like and flags mathematical deviations.
+2. Solving the "Real-Time & Real Data" Constraint
+As a student, you cannot access a corporation's live SAP/ERP system. To make this 100% real-time and use real data without mockups:
+The Data Source: Use Live Government/Open APIs. Governments publish daily procurement data and vendor contracts.
+Tabular Data: USAspending.gov API or the World Bank Procurement API. These update constantly with real purchase orders, vendor names, and amounts.
+Real Contracts: Use the SEC EDGAR API (which contains real corporate vendor agreements) or public city vendor contracts (e.g., NYC Open Data).
+The Real-Time Engine: Instead of reading a static CSV, you will build a FastAPI Webhook or use Apache Kafka/RabbitMQ. Your system will pull data from the public API every 5 minutes (simulating a live corporate stream) and process transactions as they arrive.
+3. FAISS vs. ChromaDB (Which is better here?)
+For a system that demands speed and accuracy, you should use FAISS (Facebook AI Similarity Search).
+Why FAISS over ChromaDB? FAISS is written in C++ and is the industry standard for blistering fast similarity search at scale. ChromaDB is great for beginners and metadata filtering, but FAISS is significantly faster when dealing with thousands of contract clauses in real-time.
+Efficient Vector Embeddings: Do not embed whole documents. Use Semantic Chunking. Break contracts down by clauses (e.g., "Pricing Terms", "Delivery Terms"). Use Google's text-embedding-004 (via Gemini API) or HuggingFace BGE-m3 for highly accurate embeddings.
+4. Efficient Use of Groq and Gemini (The Dual-LLM Strategy)
+To make the system fast AND accurate, we use a Router Architecture. We use Groq for speed and Gemini for deep context.
+Step 1: The Speed Layer (Groq - Llama 3 70B)
+Why: Groq runs on specialized LPUs, making it generate ~800 words per second.
+Task: Triage. When the Machine Learning model flags a transaction, pass the JSON data to Groq. Ask Groq: "Is this mathematical anomaly easily explained by standard business logic, or does it need a contract audit?"
+Step 2: The Deep Reasoning Layer (Gemini 1.5 Pro/Flash)
+Why: Gemini has a massive context window (up to 2 Million tokens) and excels at complex reasoning across multiple documents.
+Task: Forensic Audit. If Groq says "Audit needed," you query FAISS for the real contract clauses. Pass the transaction AND the contract clauses to Gemini. Ask Gemini to cross-reference pricing, dates, and terms to definitively prove if it's a violation
+
+
+Procurement_Audit_System/
+├── docker-compose.yml
+├── .env.example
+├── .gitignore
+├── requirements.txt
+├── alembic.ini
+├── alembic/
+│   ├── env.py
+│   └── versions/  (empty, auto-generated)
+├── backend/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── database.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── vendor.py
+│   │   ├── contract.py
+│   │   ├── transaction.py
+│   │   ├── audit_case.py
+│   │   └── action_plan.py
+│   └── ingestion/
+│       ├── __init__.py
+│       ├── base_client.py
+│       ├── usaspending_client.py
+│       ├── kafka_producer.py
+│       └── seed.py
+└── tests/
+    ├── __init__.py
+    ├── conftest.py
+    └── test_models.py

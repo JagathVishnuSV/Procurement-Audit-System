@@ -1,0 +1,4 @@
+# FAISS vector index files and contract PDFs are stored here.
+# Subdirectories:
+#   faiss_index/ – FAISS index files (Sprint 3)
+#   contracts/   – Uploaded vendor contract PDFs

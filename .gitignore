@@ -1,0 +1,70 @@
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ── Virtual Environments ───────────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ── Environment files ──────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Pytest / Testing ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.coveragerc
+
+# ── ML Artifacts ───────────────────────────────────────────────────────────────
+models/*.joblib
+models/*.pkl
+models/*.bin
+data/faiss_index/
+
+# ── Logs ────────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── IDE / Editor ───────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# ── Alembic Versions (keep tracked) ───────────────────────────────────────────
+# alembic/versions/ – do NOT ignore migrations
+
+# ── Node / Frontend (Sprint 5) ────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# ── Contract PDFs (potentially sensitive) ─────────────────────────────────────
+data/contracts/*.pdf
