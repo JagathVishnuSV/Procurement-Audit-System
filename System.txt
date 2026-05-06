@@ -1,0 +1,190 @@
+Intelligent Procurement Audit & Anomaly Detection System
+========================================================
+
+Purpose and Problem Statement
+-----------------------------
+Public procurement involves high volumes of transactions, complex contracts, and
+strict compliance obligations. Traditional audit workflows rely on manual
+sampling and retrospective reviews, which are slow, expensive, and miss subtle
+patterns like collusion or split-billing. This system addresses those gaps by
+automating ingestion, normalization, scoring, and case management, while
+preserving evidence trails and enabling targeted human review.
+
+Core problems solved:
+- Reduce time to identify anomalous procurement events.
+- Provide explainable signals and evidence for audit decisions.
+- Prioritize reviews using cost-aware AI triage and deeper audits only when needed.
+- Track remediation actions and financial recovery impact.
+- Consolidate multi-source procurement data into a unified, auditable pipeline.
+
+System Overview
+---------------
+The platform is a production-style procurement intelligence system with a
+multi-source ingestion layer, a real-time event pipeline, ML anomaly detection,
+LLM-assisted triage and deep audit, contract-aware evidence retrieval (RAG), and
+an operational dashboard for audit workflows.
+
+Key Components
+--------------
+1) Multi-Source Ingestion
+- Supports multiple procurement ecosystems:
+	* USAspending (structured federal data)
+	* India CPPP (semi-structured tenders)
+	* OCDS JSONL feeds (Open Contracting Data Standard)
+- Adapter framework (BaseIngestionAdapter) isolates source-specific fetching and
+	normalization logic.
+
+2) Canonical Schema + Data Quality
+- All sources normalize into a canonical record:
+	transaction_id, buyer, vendor, amount, currency, timestamp, source
+- Data quality pipeline handles:
+	* Missing fields and safe fallbacks
+	* Currency normalization to USD
+	* Duplicate detection (ID + fingerprint)
+	* Normalized buyer/vendor naming
+
+3) Near Real-Time Ingestion Backbone
+- Pollers pull sources every 5-15 minutes.
+- Change detection emits only new or updated records.
+- Events are published to Redpanda/Kafka (raw_transactions topic).
+- A consumer persists data to PostgreSQL and triggers scoring/orchestration.
+
+4) ML Anomaly Scoring
+- Isolation Forest model with behavioral and temporal features:
+	* Velocity spikes (7d vs 30d)
+	* Short-burst invoice clusters (24h/48h)
+	* Split-billing indicators
+	* Round-amount patterns
+	* Peer comparison vs agency averages
+- SHAP explanations provide interpretability for audit evidence.
+
+5) Entity Resolution
+- Vendor names are not treated as raw strings.
+- Fuzzy normalization and clustering create canonical vendor IDs so that
+	ABC Ltd / ABC Pvt Ltd / A.B.C Limited map to a single entity.
+- This enables longitudinal vendor behavior analysis and collusion detection.
+
+6) Relationship Graph Engine
+- Builds a graph of vendor-buyer-category relationships.
+- Detects network-level risks:
+	* Repeated awards
+	* Tight clusters
+	* Unusual connections (centrality-based signals)
+
+7) Contract Intelligence (RAG)
+- Contracts are ingested, chunked, embedded, and stored in FAISS.
+- Semantic search retrieves relevant clauses for evidence.
+- Deep audits reference retrieved clauses for legally defensible reasoning.
+
+8) AI Orchestration (Triage + Deep Audit)
+- Stage 1: Fast triage to decide escalation.
+- Stage 2: Deep audit only if escalation is justified.
+- Strict JSON schema validation, retry policies, and cost-aware limits.
+
+9) Case Management + Action Plans
+- Audit cases persist evidence, status, confidence, and verdicts.
+- Action plans track remediation ownership, deadlines, and recovered savings.
+
+10) Realtime Ops Dashboard
+- WebSocket snapshots update KPIs, inbox, and timelines.
+- Risk-focused notifications (medium/high only).
+
+Technology Stack
+----------------
+Backend:
+- FastAPI (API layer)
+- SQLAlchemy + Alembic (ORM + migrations)
+- PostgreSQL (system of record)
+- Redpanda/Kafka (streaming backbone)
+- Redis (auxiliary caching)
+
+ML/AI:
+- Isolation Forest + SHAP
+- Sentence-Transformers (embeddings)
+- FAISS (vector search)
+- LLMs (triage and deep audit)
+
+Frontend:
+- React + Vite + TypeScript
+- React Query for caching and data synchronization
+
+Data Flow (High-Level)
+----------------------
+1) Source polling (USA/CPPP/OCDS)
+2) Adapter normalization into canonical schema
+3) Data quality handling and deduplication
+4) Change detection
+5) Publish to Kafka
+6) Consumer persists records to DB
+7) ML scoring and orchestration
+8) Audit cases created/updated
+9) Frontend reads via APIs + WebSocket snapshots
+
+Persistence Model (Core Entities)
+---------------------------------
+- Transaction: canonical procurement record, source, amount, date, vendor
+- Vendor: normalized vendor identity
+- AuditCase: ML score, triage, deep audit results, evidence, status
+- ActionPlan: remediation ownership and ROI
+- Contract: ingested text + embeddings
+
+What Makes It Enterprise-Grade
+------------------------------
+- Multi-source ingestion with canonical normalization
+- Auditability: raw payloads retained in DB
+- Cost-aware AI: deep audits only on escalation
+- Explainability: SHAP + clause citations
+- Operational metrics: coverage, ROI, pipeline health
+- Realtime dashboard integration
+
+Operational Behavior
+--------------------
+- Ingestion runs continuously when enabled in configuration.
+- Kafka consumer persists raw events and triggers orchestration.
+- Orchestration can also be triggered manually via API.
+- Frontend updates from live WebSocket snapshots.
+
+Key Configurations (Examples)
+-----------------------------
+- INGESTION_LOOP_ENABLED=true
+- KAFKA_CONSUMER_ENABLED=true
+- INGESTION_POLL_INTERVAL_SECONDS=300
+- CPPP_BASE_URL / OCDS_BASE_URL
+- ORCH_RUN_LLM=true
+
+Validation Checklist
+--------------------
+- Health endpoint returns OK
+- Ingestion logs show polling for each source
+- Kafka shows raw_transactions events
+- Metrics endpoints reflect multi-source distribution
+- Cases appear in inbox with triage/deep audit evidence
+
+Known Constraints
+-----------------
+- CPPP HTML structure can change; parser may need refreshes.
+- OCDS feeds can be large; JSONL gzip ingestion is used for efficiency.
+- Realtime uses snapshot push (not full CDC/event sourcing).
+- RBAC/SSO are not yet implemented.
+
+Recommended Extensions
+----------------------
+- Source freshness SLAs and ingestion lag metrics
+- Vendor risk scoring integrated into case priority
+- UI action-plan lifecycle controls with audit approvals
+- Queue-based orchestration workers for high volume
+
+How to Run (Summary)
+--------------------
+1) Start infrastructure: docker-compose up -d
+2) Start backend:
+	 - Activate venv
+	 - Run alembic upgrade head
+	 - Start uvicorn backend.api.main:app
+3) Start frontend:
+	 - cd frontend
+	 - npm install
+	 - npm run dev
+
+This file is intended as a study/reference overview of the system, its
+implementation details, and the engineering decisions behind its architecture.
